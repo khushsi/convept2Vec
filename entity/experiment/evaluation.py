@@ -51,6 +51,9 @@ def direct_word_cosine(text1, text2):
 def NDCG(results):
     ndcg1 = 0
     ndcg3 = 0
+
+    assert len(results) != 0
+
     for result in results:
         ndcg1 += ndcg_at_k(result,1,method=1)
         ndcg3 += ndcg_at_k(result, 3, method=1)
@@ -63,18 +66,16 @@ class TestDataset:
     def __init__(self, *args, **kwargs):
         self.metric =  mean_average_precision
         self.name = "Textbook - ?"
+        # testmap saves the pairs of <doc in book1, [similar docs in book2]>
         self.testmap={}
         self.kvalues = None
         self.startswith = ['iir-','iir-']
 
-
-
-
-
-
 def LoadVectors(testdataset, folder,type=DIRECT_VECTOR):
     fileobj = {}
     file2obj = {}
+
+    # load vectors from book 1
     for filename in os.listdir(folder):
         if filename.startswith(testdataset.bookname[0]):
             filenamek = filename.split(".")[0].lower().replace(" ","_")
@@ -84,7 +85,7 @@ def LoadVectors(testdataset, folder,type=DIRECT_VECTOR):
             elif type == WORD_VECTOR:
                 fileobj[filenamek] = readWordVectors(folder + filename)
 
-
+    # load vectors from book 2
     for filename in os.listdir(folder):
         if filename.startswith(testdataset.bookname[1]):
             filenamek = filename.split(".")[0].lower().replace(" ","_")
@@ -97,34 +98,38 @@ def LoadVectors(testdataset, folder,type=DIRECT_VECTOR):
     scorevector = {}
     prediction = {}
     results = []
-    for doc in fileobj.keys():
-        scorevector[doc] = Q.PriorityQueue()
-        for wiki in file2obj.keys():
-            if type == DIRECT_VECTOR:
-                scorevector[doc].put((round(spatial.distance.cosine(fileobj[doc], file2obj[wiki]),8), wiki))
-            elif type == WORD_VECTOR:
-                scorevector[doc].put((round(direct_word_cosine(fileobj[doc], file2obj[wiki]), 8), wiki))
-        prediction[doc] = [scorevector[doc].get(0)[1] for x in range(scorevector[doc].qsize())]
-        # print(prediction)
 
-        if(doc in testdataset.testmap.keys()):
+    '''
+    enumerate the source docs and target docs, compute their cosine similarities
+    '''
+    for doc1_name in fileobj.keys():
+        scorevector[doc1_name] = []
+        for doc2_name in file2obj.keys():
+            if type == DIRECT_VECTOR:
+                # print('cos(%s, %s)=%.5f' % (doc1_name, doc2_name, spatial.distance.cosine(fileobj[doc1_name], file2obj[doc2_name])))
+                scorevector[doc1_name].append((round(spatial.distance.cosine(fileobj[doc1_name], file2obj[doc2_name]), 8), doc2_name))
+            elif type == WORD_VECTOR:
+                scorevector[doc1_name].append((round(direct_word_cosine(fileobj[doc1_name], file2obj[doc2_name]), 8), doc2_name))
+        # get the sorted list of doc2 names
+        prediction[doc1_name] = [t[1] for t in sorted(scorevector[doc1_name], key=lambda x:x[0], reverse=False)]
+
+        # enumerate the groundtruth
+        if(doc1_name in testdataset.testmap.keys()):
             # print(doc,"present")
             tempresult = []
             # print(testdataset.testmap[doc])
-            for pred in prediction[doc]:
-                if pred in testdataset.testmap[doc]:
-                    tempresult.append(testdataset.testmap[doc][pred])
+            for pred in prediction[doc1_name]:
+                if pred in testdataset.testmap[doc1_name]:
+                    tempresult.append(testdataset.testmap[doc1_name][pred])
                 else:
                     tempresult.append(0)
             # print(tempresult)
             results.append(tempresult)
 
+    # mean_average_precision
     score = testdataset.metric(results)
 
     return fileobj,file2obj, prediction,results,score
-
-
-
 
 if __name__ == '__main__':
     print('Run experiment for %s' % "vector space model")
@@ -173,12 +178,19 @@ if __name__ == '__main__':
             text = val.split(":")[0].replace(".txt.phrases", "")
             t2p_dataset.testmap[row[0]].update({text: score})
 
+    '''
+    three test datasets
+    1. textbook to paper
+    2. textbook to textbook
+    3. textbook to wiki
+    '''
     test_datasets = [t2p_dataset, t2t_dataset, t2w_dataset]
 
     concept_folders = {}
-    concept_folders[DIRECT_VECTOR] = ['tLDA200','tsLDA200','tLDA250','tsLDA250','LDA200','LDA210','LDA220','LDA230','LDA240','LDA250','LDA260','LDA270','LDA280','LDA290','LDA300','LDA400','LDA500','UNIGRAM']
-    concept_folders[WORD_VECTOR] = ['greedy-acm','greedy-wiki']
-    concept_folders[CONCEPT_VECTOR] = ['TFIDFNP']
+    # concept_folders[DIRECT_VECTOR] = ['tLDA200','tsLDA200','tLDA250','tsLDA250','LDA200','LDA210','LDA220','LDA230','LDA240','LDA250','LDA260','LDA270','LDA280','LDA290','LDA300','LDA400','LDA500','UNIGRAM']
+    concept_folders[DIRECT_VECTOR] = ['Doc2Vec']
+    # concept_folders[WORD_VECTOR] = ['greedy-acm','greedy-wiki']
+    # concept_folders[CONCEPT_VECTOR] = ['TFIDFNP']
 
     for dataset in test_datasets:
         for type in concept_folders.keys():
