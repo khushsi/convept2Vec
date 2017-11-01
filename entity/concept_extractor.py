@@ -20,9 +20,10 @@ import gensim
 from gensim import corpora
 from gensim.matutils import sparse2full
 from collections import defaultdict
+import numpy as np
 
 nlp = spacy.load('en')
-IS_STEM=True
+IS_STEM=False
 REMOVE_STOPWORDS=True
 stemmer = PorterStemmer()
 
@@ -255,20 +256,51 @@ class MyTrie:
 
         return keyword_list
 
+class Word2VecExtractor():
+    '''
+    Word2Vec_features
+    '''
+    def __init__(self, pretrained_model = 'google'):
+        # Load Google/GloVe's pre-trained Word2Vec model.
+        if pretrained_model == 'google':
+            self.pretrained_w2v_path = "/Users/memray/Data/glove/GoogleNews-vectors-negative300.bin"
+        else:
+            self.pretrained_w2v_path = "/Users/memray/Data/glove/glove.6B.300d.w2v.txt"
+
+        self.vector_length       = 300
+
+        print('Loading %s W2V model...' % pretrained_model)
+        if self.pretrained_w2v_path.endswith('bin'):
+            self.model = gensim.models.KeyedVectors.load_word2vec_format(self.pretrained_w2v_path, binary=True).wv
+        else:
+            self.model = gensim.models.KeyedVectors.load_word2vec_format(self.pretrained_w2v_path, binary=False).wv
+
+    def vectorize(self, x):
+        '''
+        for a sentence x
+        :param x:
+        :return:
+        '''
+        vec         = np.average([self.model.wv[w] for w in x if w in self.model.wv], axis=0)
+        if vec.any() == None or vec.any() == 'nan' or vec.shape != (self.vector_length, ):
+            vec = np.zeros((self.vector_length, )).reshape(-1,1)
+        return vec
+
+    def extract(self, testset, OUTPUT_FOL=None):
+        if not os.path.exists(OUTPUT_FOL):
+            os.makedirs(OUTPUT_FOL)
+
+        for doc in testset:
+            tokens = preprocessText(doc.text, stemming=IS_STEM, stopwords_removal=REMOVE_STOPWORDS)
+            vec    = self.vectorize(tokens).tolist()
+            with open(os.path.join(OUTPUT_FOL, doc.id + ".txt.phrases"), 'wb') as f_:
+                pickle.dump(vec, f_)
 
 class Doc2VecExtractor():
     '''
-    10.1 Doc2Vec_features
+    Doc2Vec_features
     '''
-    def get_id(self, doc_str):
-        '''
-        Given a str, return its ID
-        :param doc_str:
-        :return:
-        '''
-        return self.doc2idx_dict[doc_str]
-
-    def __init__(self, ldocuments, model_path=None, output_path=None):
+    def __init__(self, ldocuments, model_path=None, output_path=None, pretrained_model = 'google'):
         self.doc2idx_dict = {}
         self.model_path  = model_path
 
@@ -276,12 +308,25 @@ class Doc2VecExtractor():
             os.makedirs(model_path[:model_path.rfind(os.path.sep)])
 
         self.output_path = output_path
-        self.pretrained_w2v_path = "/Users/memray/Data/glove/GoogleNews-vectors-negative300.bin"
+        if pretrained_model == 'google':
+            self.pretrained_w2v_path = "/Users/memray/Data/glove/GoogleNews-vectors-negative300.bin"
+        else:
+            self.pretrained_w2v_path = "/Users/memray/Data/glove/glove.6B.300d.w2v.txt"
 
         if model_path != None and os.path.exists(model_path):
+            print('Loading existing model: %s' % model_path)
             self.d2v_model  = Doc2Vec.load(model_path)
         else:
+            print('Training new model and exporting to %s' % model_path)
             self.d2v_model  = self.train_D2V(ldocuments)
+
+    def get_id(self, doc_str):
+        '''
+        Given a str, return its ID
+        :param doc_str:
+        :return:
+        '''
+        return self.doc2idx_dict[doc_str]
 
     def train_D2V(self, ldocuments):
         '''
@@ -294,7 +339,7 @@ class Doc2VecExtractor():
             doc_num = len(document_dict)
             id2num_dict[doc.id] = doc_num
 
-            words  = preprocessText(doc.text, stemming=False, stopwords_removal=False)
+            words  = preprocessText(doc.text, stemming=False, stopwords_removal=True)
             tagged_doc = TaggedDocument(words=words, tags=[doc_num])
             document_dict[doc.id] = (doc_num, tagged_doc)
 
@@ -304,7 +349,10 @@ class Doc2VecExtractor():
         d2v_model = Doc2Vec(size=300, window=5, min_count=1, workers=4)
         d2v_model.build_vocab(documents)
         if self.pretrained_w2v_path:
-            d2v_model.intersect_word2vec_format(self.pretrained_w2v_path, binary=True)
+            if self.pretrained_w2v_path.endswith('bin'):
+                d2v_model.intersect_word2vec_format(self.pretrained_w2v_path, binary=True)
+            else:
+                d2v_model.intersect_word2vec_format(self.pretrained_w2v_path, binary=False)
 
         for epoch in range(20):
             print('D2V training epoch = %d' % epoch)
@@ -334,10 +382,6 @@ class Doc2VecExtractor():
         return self.d2v_model.infer_vector(tokens)
 
     def extract_d2v(self, testset, OUTPUT_FOL=None):
-        doc_set = []
-        for doc in documents:
-            doc_set.append(doc.text)
-
         if not os.path.exists(OUTPUT_FOL):
             os.makedirs(OUTPUT_FOL)
 
@@ -687,8 +731,8 @@ if __name__=='__main__':
     # listbooks = [ 'iir-',  'wikitest-']
     listbooks_test = ['chapterwiseiir']
 
-    documents = load_document(IR_CORPUS,listbooks)
-    documentstest = load_document(IR_CORPUS,listbooks_test)
+    # documents = load_document(IR_CORPUS,listbooks)
+    # documentstest = load_document(IR_CORPUS,listbooks_test)
 
     # kl = KeywordList('greedy-acm')
     # keyword_trie = kl.trie
@@ -701,15 +745,22 @@ if __name__=='__main__':
     # keyword_trie = kl.trie
     # extract_author_keywords(keyword_trie, documents, 'greedy-wiki')
 
-    # Code for Doc2Vec
     llistbooks = ['irv-', 'issr-', 'foa-', 'zhai-', 'seirip-', 'wiki-', 'sigir']
     llistbooks_test = ['chapterwiseiir', 'wikitest-', 'mir-', 'iir-', 'iirbookpubs-']
 
+    # Code for Doc2Vec
     ldocuments = load_document(IR_CORPUS, llistbooks)
     ldocumentstest = load_document(IR_CORPUS, llistbooks_test)
-    d2v = Doc2VecExtractor(ldocuments, model_path='model/d2v/doc2vec_ir.model')
-    d2v.extract_d2v(testset=ldocumentstest, OUTPUT_FOL="data/keyphrase_output/Doc2Vec/")
+    model_name = 'Doc2Vec(stemming=False, stopwords_removal=True, pretrained=Google)'
+    d2v = Doc2VecExtractor(ldocuments, model_path='model/%s/doc2vec_ir.model' % model_name, pretrained_model = 'google')
+    d2v.extract_d2v(testset=ldocumentstest, OUTPUT_FOL="data/keyphrase_output/%s/" % model_name)
 
+    # Code for Word2Vec
+    # ldocuments = load_document(IR_CORPUS, llistbooks)
+    # ldocumentstest = load_document(IR_CORPUS, llistbooks_test)
+    # w2v = Word2VecExtractor(pretrained_model = 'google')
+    # w2v.extract(testset=ldocuments, OUTPUT_FOL="data/keyphrase_output/Word2Vec-Google/")
+    # w2v.extract(testset=ldocumentstest, OUTPUT_FOL="data/keyphrase_output/Word2Vec-Google/")
 
     ## Code For LDA
     # llistbooks = ['irv-','issr-','foa-','zhai-','seirip-','wiki-']

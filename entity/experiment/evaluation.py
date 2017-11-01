@@ -180,18 +180,19 @@ if __name__ == '__main__':
 
     '''
     three test datasets
-    1. textbook to paper
-    2. textbook to textbook
-    3. textbook to wiki
+    1. textbook to textbook
+    2. textbook to wiki
+    3. textbook to paper
     '''
-    test_datasets = [t2p_dataset, t2t_dataset, t2w_dataset]
+    test_datasets = [t2t_dataset, t2w_dataset, t2p_dataset]
 
     concept_folders = {}
     # concept_folders[DIRECT_VECTOR] = ['tLDA200','tsLDA200','tLDA250','tsLDA250','LDA200','LDA210','LDA220','LDA230','LDA240','LDA250','LDA260','LDA270','LDA280','LDA290','LDA300','LDA400','LDA500','UNIGRAM']
-    concept_folders[DIRECT_VECTOR] = ['Doc2Vec']
+    concept_folders[DIRECT_VECTOR] = ['DocTag2Vec-nostopwords_nostem.csv.0.2tfidfnpg'] # 'Word2Vec-GloVe', 'Word2Vec-Google'
     # concept_folders[WORD_VECTOR] = ['greedy-acm','greedy-wiki']
     # concept_folders[CONCEPT_VECTOR] = ['TFIDFNP']
 
+    print(concept_folders[DIRECT_VECTOR])
     for dataset in test_datasets:
         for type in concept_folders.keys():
             for ir_folder in concept_folders[type]:

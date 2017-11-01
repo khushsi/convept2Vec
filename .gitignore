@@ -103,3 +103,4 @@ ENV/
 # Temporary data
 .ipynb_checkpoints/
 /model/d2v(stemming=True, stopwords_removal=True)/
+/data/
