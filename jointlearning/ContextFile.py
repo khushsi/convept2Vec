@@ -168,17 +168,26 @@ for key in conceptdocs:
 
 f_review = 'data/yelp_academic_dataset_review.json'
 f_business = 'data/yelp_academic_dataset_business.json'
+f_doc2tagwithtitle = 'data/doc2tag_title.json'
+
 reviewwriter = open(f_review,'w')
 businesswriter = open(f_business,'w')
-
+doc2tagwirter = open(f_doc2tagwithtitle,'w')
 for key in conceptdocs.keys():
     categories = ""
     if(key in conceptcategory):
         categories = "','".join(list(set(conceptcategory[key])))
+        cat = [con.replace(" ","_") for con in conceptcategory[key]]
     # print(key, " - " ,categories)
     rjsontext = "{\"review_id\": \"r"+key+"\", \"user_id\": \"uiir_1\",\"business_id\":\""+key+"\" , \"stars\": 5, \"date\": \"2011-10-10\", \"text\": \""+' '.join(conceptdocs[key])+"\"}"+"\n"
     bjsontext = "{\"business_id\":\""+key+"\",\"name\":\""+key+"\",\"categories\":\"['"+categories+"']\",\"type\":\"business\"}" + "\n"
 
     reviewwriter.write(rjsontext)
     businesswriter.write(bjsontext)
+
+    doc2tagwirter.write(key.replace(" ", "_") + " " + ' '.join(cat).replace("\n", "").replace("\t", "") + "\n")
+    doc2tagwirter.write(' '.join(conceptdocs[key]) + "\n")
+
+
+
 

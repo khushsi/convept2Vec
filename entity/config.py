@@ -48,7 +48,8 @@ class Config:
             self.train_type = TrainType.train_tag
         self.flag = flag
 
-        self.tf_cutoff = 150    # use 100, #(freq>100)=22.5k, #(freq>200)=16.5k, #(freq>500)=10.6k
+        self.i = 150
+        self.tf_cutoff = self.i  # use 100, #(freq>100)=22.5k, #(freq>200)=16.5k, #(freq>500)=10.6k
         self.timemark  = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
         # for data
         # self.path_data = "".join([home, "/Data/yelp_bkp/output/review_processed_rest_interestword_DEC22.txt"])
@@ -58,6 +59,8 @@ class Config:
         # self.path_embed = "".join([home, "/Data/glove/glove.processed.840B.300d.txt"])
         self.path_embed     = "".join([home, "/Data/glove/glove.6B.200d.txt"])
         self.path_raw_data  = "".join([home, "/Data/yelp_s/output/raw_review_restaurant.json"])
+        self.path_raw_data_dict  = "".join([home, "/Data/yelp_s/output/raw_review_restaurant_dictioary.json"])
+
         self.path_log = "".join([home, "/Data/yelp_s/model/training.%s_%s.%s.log" % (self.flag, self.flag, self.timemark)])
         if not os.path.exists(home+'/Data/yelp_s/model/'):
             os.makedirs(home+'/Data/yelp_s/model/')

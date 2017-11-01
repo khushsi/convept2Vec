@@ -14,8 +14,8 @@ conceptfile = 'data/conceptdocs.csv'
 CONCEPT_FOLDER_BASE="data/keyphrase_output/"
 
 #listbooks_concepts = [ 'mir-', 'iir-' ,'chapterwiseiir','wiki', 'iirbookpubs-','iirtest-','irv-','issr-','foa-','sigir-']
-# listbooks_concepts = [ 'irv-','issr-','foa-','sigir-','wiki-','zhai-']
-listbooks_concepts = [ 'mir-', 'iir-' ,'chapterwiseiir', 'iirbookpubs-','iirtest-','wikitest-']
+listbooks_concepts = [ 'irv-','issr-','foa-','sigir-','wiki-','zhai-']
+# listbooks_concepts = [ 'mir-', 'iir-' ,'chapterwiseiir', 'iirbookpubs-','iirtest-','wikitest-']
 preprocessed_concepts=['TFIDF1','TFIDF2','TFIDF3','TFIDFNP1','TFIDFNP2','TFIDFNP3']
 notprocessed_concepts=["gold"]
 
@@ -49,11 +49,11 @@ IR_CORPUS = 'data/keyphrase/textbook/all_text.csv'
 documents = load_document(IR_CORPUS,listbooks_concepts)
 
 
-outputfile='doc2tagtest.csv'
+outputfile='doc2tagtrain_nostopwords_nostem.csv'
 fcsv = open(outputfile,'w')
 for doc in documents:
     if doc.id  in l_concepts:
         # print(' '.join(l_concepts[doc.id]).replace("\n","").replace("\t","")+"\n")
 
         fcsv.write(doc.id.replace(" " ,"_")+" "+' '.join(l_concepts[doc.id]).replace("\n","").replace("\t","")+"\n")
-        fcsv.write(' '.join(preprocessText(doc.text,stemming=True,stopwords_removal=True))+"\n")
+        fcsv.write(' '.join(preprocessText(doc.text,stemming=False,stopwords_removal=False))+"\n")

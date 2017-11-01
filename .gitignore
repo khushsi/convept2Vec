@@ -1,3 +1,12 @@
+/model/
+model/d2v(stemming=False, stopwords_removal=False)/
+model/d2v(stemming=False, stopwords_removal=False, pretrained_w2v=False)/
+model/d2v(stemming=False, stopwords_removal=True)/
+model/d2v(stemming=True, stopwords_removal=True)/
+
+modelbkp/
+
+data.zip
 # Created by .ignore support plugin (hsz.mobi)
 ### Python template
 # Byte-compiled / optimized / DLL files
@@ -7,7 +16,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+.DS_Store
 # Distribution / packaging
 .Python
 env/
@@ -27,6 +36,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+/data/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

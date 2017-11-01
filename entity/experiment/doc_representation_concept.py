@@ -19,7 +19,7 @@ tags_of_interest = [ "Data_pre-processing" , "Document_classification" , "Docume
 
 
 # model_name = ['doc2vec','attr']
-model_dirs = { 'doc2vec':'prodx_doc2vec', 'attr':'attribute-argumented_model.freq=10'}
+model_dirs = { 'doc2vec':'prodx_doc2vec'}#, 'attr':'attribute-argumented_model.freq=10'}
 
 
 
@@ -41,9 +41,10 @@ if __name__ == '__main__':
         doc_embed = np.load(conf.path_doc_npy+'.npy')
         print(len(dp.idx2prod))
 
-        irfolders=["TFIDFNP10"]
+        irfolders=["TFIDF3"]
 
         combineresults={}
+
         for ir_directory in irfolders:
             print(ir_directory ,end=" ")
             ir_directory =  "data/keyphrase_output/" + ir_directory +"/"
@@ -52,7 +53,9 @@ if __name__ == '__main__':
             fcount={}
 
             for filename in os.listdir(ir_directory):
-                if filename.endswith('phrases') and filename.startswith('iir-2 1'):
+
+                if filename.endswith('phrases') and filename.startswith('iirtest-'):
+                    print(filenamek)
                     filenamek = filename.split(".")[0].replace(" ","_")
                     fileobj[filenamek] = np.zeros(200)
                     fcount[filenamek]=0
@@ -72,6 +75,7 @@ if __name__ == '__main__':
                     filenamek = filename.split(".")[0].lower().replace(" ","_")
                     wikiobj[filenamek] = np.zeros(200)
                     fcount[filenamek] = 0
+                    print(filenamek)
                     with open(ir_directory+filename,'r') as irfile:
                         for line in irfile.readlines():
                             line = line.split(",")[0]

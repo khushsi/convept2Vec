@@ -154,7 +154,7 @@ if __name__ == '__main__':
     t2w_dataset.metric = mean_average_precision
     t2w_dataset.name = "Textbook - wikipedia"
     reader = csv.reader(open(f_textbook_wiki, 'r'), delimiter=",")
-    t2w_dataset.bookname = ['iir-', 'wikitest-']
+    t2w_dataset.bookname = ['iirtest-', 'wikitest-']
     for row in reader:
         t2w_dataset.testmap[row[0]] = {}
         for val in row[1].split(","):
@@ -176,8 +176,8 @@ if __name__ == '__main__':
     test_datasets = [t2p_dataset, t2t_dataset, t2w_dataset]
 
     concept_folders = {}
-    concept_folders[DIRECT_VECTOR] = ['tLDA200','tsLDA200','tLDA250','tsLDA250','LDA200','LDA210','LDA220','LDA230','LDA240','LDA250','LDA260','LDA270','LDA280','LDA290','LDA300','LDA400','LDA500','UNIGRAM']
-    concept_folders[WORD_VECTOR] = ['greedy-acm','greedy-wiki']
+    concept_folders[DIRECT_VECTOR] = ['Doc2Vec']#['tLDA200','tsLDA200','tLDA250','tsLDA250','LDA200','LDA210','LDA220','LDA230','LDA240','LDA250','LDA260','LDA270','LDA280','LDA290','LDA300','LDA400','LDA500','UNIGRAM']
+    # concept_folders[WORD_VECTOR] = ['greedy-acm','greedy-wiki']
     # concept_folders[CONCEPT_VECTOR] = ['TFIDFNP']
 
     for dataset in test_datasets:

@@ -8,7 +8,9 @@ import re
 import csv
 import marisa_trie
 import nltk
-
+from gensim.models import Doc2Vec
+from gensim.models.doc2vec import TaggedDocument
+import sys
 from nltk.stem.porter import PorterStemmer
 import heapq
 import itertools
@@ -18,10 +20,14 @@ import gensim
 from gensim import corpora
 from gensim.matutils import sparse2full
 from collections import defaultdict
+import numpy as np
 
 nlp = spacy.load('en')
-IS_STEM=True
+IS_STEM=False
 REMOVE_STOPWORDS=True
+
+print("default stemming :",IS_STEM)
+print("default stopword removal :",REMOVE_STOPWORDS)
 stemmer = PorterStemmer()
 
 def stem(word):
@@ -146,7 +152,7 @@ WORDLIST_PATH = {'greedy-wiki':WORDLIST_DIR+'wikipedia_14778209.txt',
                  'wikiitalic': WORDLIST_DIR + 'italics.txt',
                  'wikisection': WORDLIST_DIR + 'section.txt',
                  'wikimergeall': WORDLIST_DIR + 'mergeall.final.txt',
-                'wikiacm': WORDLIST_DIR + 'wikiacm.txt',
+                 'wikiacm': WORDLIST_DIR + 'wikiacm.txt',
                  'wikitemp':WORDLIST_DIR + 'wiki_123'
                  }
     #'greedy-wiki':WORDLIST_DIR+'wikipedia_14778209.txt',
@@ -253,7 +259,140 @@ class MyTrie:
 
         return keyword_list
 
+class Word2VecExtractor():
+    '''
+    Word2Vec_features
+    '''
+    def __init__(self, pretrained_model = 'google'):
+        # Load Google/GloVe's pre-trained Word2Vec model.
+        if pretrained_model == 'google':
+            self.pretrained_w2v_path = "/Users/memray/Data/glove/GoogleNews-vectors-negative300.bin"
+        else:
+            self.pretrained_w2v_path = "/Users/memray/Data/glove/glove.6B.300d.w2v.txt"
 
+        self.vector_length       = 300
+
+        print('Loading %s W2V model...' % pretrained_model)
+        if self.pretrained_w2v_path.endswith('bin'):
+            self.model = gensim.models.KeyedVectors.load_word2vec_format(self.pretrained_w2v_path, binary=True).wv
+        else:
+            self.model = gensim.models.KeyedVectors.load_word2vec_format(self.pretrained_w2v_path, binary=False).wv
+
+    def vectorize(self, x):
+        '''
+        for a sentence x
+        :param x:
+        :return:
+        '''
+        vec         = np.average([self.model.wv[w] for w in x if w in self.model.wv], axis=0)
+        if vec.any() == None or vec.any() == 'nan' or vec.shape != (self.vector_length, ):
+            vec = np.zeros((self.vector_length, )).reshape(-1,1)
+        return vec
+
+    def extract(self, testset, OUTPUT_FOL=None):
+        if not os.path.exists(OUTPUT_FOL):
+            os.makedirs(OUTPUT_FOL)
+
+        for doc in testset:
+            tokens = preprocessText(doc.text, stemming=IS_STEM, stopwords_removal=REMOVE_STOPWORDS)
+            vec    = self.vectorize(tokens).tolist()
+            with open(os.path.join(OUTPUT_FOL, doc.id + ".txt.phrases"), 'wb') as f_:
+                pickle.dump(vec, f_)
+
+class Doc2VecExtractor():
+    '''
+    Doc2Vec_features
+    '''
+    def __init__(self, ldocuments, model_path=None, output_path=None, pretrained_model = 'google'):
+        self.doc2idx_dict = {}
+        self.model_path  = model_path
+
+        if not os.path.exists(model_path[:model_path.rfind(os.path.sep)]):
+            os.makedirs(model_path[:model_path.rfind(os.path.sep)])
+
+        self.output_path = output_path
+        if pretrained_model == 'google':
+            self.pretrained_w2v_path = "/Users/memray/Data/glove/GoogleNews-vectors-negative300.bin"
+        else:
+            self.pretrained_w2v_path = "/Users/memray/Data/glove/glove.6B.300d.w2v.txt"
+
+        if model_path != None and os.path.exists(model_path):
+            print('Loading existing model: %s' % model_path)
+            self.d2v_model  = Doc2Vec.load(model_path)
+        else:
+            print('Training new model and exporting to %s' % model_path)
+            self.d2v_model  = self.train_D2V(ldocuments)
+
+    def get_id(self, doc_str):
+        '''
+        Given a str, return its ID
+        :param doc_str:
+        :return:
+        '''
+        return self.doc2idx_dict[doc_str]
+
+    def train_D2V(self, ldocuments):
+        '''
+        Load or train Doc2Vec
+        '''
+        document_dict = {}
+        id2num_dict  = {}
+        documents = []
+        for doc in ldocuments:
+            doc_num = len(document_dict)
+            id2num_dict[doc.id] = doc_num
+
+            words  = preprocessText(doc.text, stemming=IS_STEM, stopwords_removal=REMOVE_STOPWORDS)
+            tagged_doc = TaggedDocument(words=words, tags=[doc_num])
+            document_dict[doc.id] = (doc_num, tagged_doc)
+
+            documents.append(tagged_doc)
+
+        # d2v_model = Doc2Vec(size=self.config['d2v_vector_length'], window=self.config['d2v_window_size'], min_count=self.config['d2v_min_count'], workers=4, alpha=0.025, min_alpha=0.025) # use fixed documents rate
+        d2v_model = Doc2Vec(size=300, window=5, min_count=3, workers=10,iter=30)
+        d2v_model.build_vocab(documents)
+        if self.pretrained_w2v_path:
+            if self.pretrained_w2v_path.endswith('bin'):
+                d2v_model.intersect_word2vec_format(self.pretrained_w2v_path, binary=True)
+            else:
+                d2v_model.intersect_word2vec_format(self.pretrained_w2v_path, binary=False)
+
+        # for epoch in range(20):
+        # print('D2V training epoch = %d' % epoch)
+        d2v_model.train(documents, total_examples=len(documents))
+            # d2v_model.alpha -= 0.002  # decrease the learning rate
+            # d2v_model.min_alpha = d2v_model.alpha  # fix the learning rate, no decay
+
+        # store the model to mmap-able files
+        d2v_model.save(self.model_path)
+
+        if self.output_path != None:
+            if not os.path.exists(self.output_path):
+                os.makedirs(self.output_path)
+
+            for doc.id, (doc_num, _) in document_dict.items():
+                with open(os.path.join(self.output_path, doc.id + ".txt.phrases"), 'wb') as f_:
+                    pickle.dump(d2v_model.docvecs[doc_num].tolist(), f_)
+
+        return d2v_model
+
+    def vectorize(self, tokens):
+        '''
+        for a sentence x
+        :param x:
+        :return:
+        '''
+        return self.d2v_model.infer_vector(tokens)
+
+    def extract_d2v(self, testset, OUTPUT_FOL=None):
+        if not os.path.exists(OUTPUT_FOL):
+            os.makedirs(OUTPUT_FOL)
+
+        for doc in testset:
+            tokens = preprocessText(doc.text, stemming=IS_STEM, stopwords_removal=REMOVE_STOPWORDS)
+            vec    = self.vectorize(tokens).tolist()
+            with open(os.path.join(OUTPUT_FOL, doc.id + ".txt.phrases"), 'wb') as f_:
+                pickle.dump(vec, f_)
 
 class Document:
     def __init__(self, *args, **kwargs):
@@ -276,22 +415,21 @@ class Document:
         return '%s\t%s' % (self.id, self.text)
 
 IR_CORPUS = 'data/keyphrase/textbook/all_text.csv'
+KC_CORPUS = 'data/conceptdocs.csv'
 
-
-def load_document(path,booknames=['iir']):
+def load_document(path,booknames=['iir-']):
     print('Start loading documents from %s' % path)
     doc_list = []
     file = open(path, 'r',encoding='utf-8', errors='ignore')
 
     with file as tsv:
+        csv.field_size_limit(sys.maxsize)
         tsvin = csv.reader(file, delimiter=',')
         for row in tsvin:
             if row[0].startswith(tuple(booknames)):
                 doc = Document(row[0].strip(),row[1].strip())
                 doc_list.append(doc)
     return doc_list
-
-
 
 def getGlobalngrams(grams,documents,threshold):
 
@@ -300,7 +438,7 @@ def getGlobalngrams(grams,documents,threshold):
         singlecorpus += ' '+ doc.text + '\n'
 
 
-    ncorpus = ' '.join(preprocessText(singlecorpus))
+    ncorpus = ' '.join(preprocessText(singlecorpus,stemming=IS_STEM,stopwords_removal=REMOVE_STOPWORDS))
     tf = TfidfVectorizer(analyzer='word', ngram_range=grams, stop_words=stopwords)
     tfidf_matrix = tf.fit_transform([ncorpus])
     feature_names = tf.get_feature_names()
@@ -312,11 +450,10 @@ def getGlobalngrams(grams,documents,threshold):
     topindex = [ (feature_names[y],x)  for (x,y) in tokindex ]
     f = open('data/file'+str(grams[0])+".txt",'w')
     for key in global1grams:
-        f.write(key+"\n")
+        f.write(key+","+global1grams[key]+"\n")
 
 
     return  global1grams,topindex
-
 
 def extract_np_high_tfidf_words( documents, top_k=200, ngram=(1,1), OUTPUT_FOL='TFIDF',is_global=True):
     '''
@@ -331,7 +468,7 @@ def extract_np_high_tfidf_words( documents, top_k=200, ngram=(1,1), OUTPUT_FOL='
         os.makedirs(OUTPUT_DIR + OUTPUT_FOL)
 
     texts = [[preprocessText(sen,stemming=False,stopwords_removal=False)  for sen in document.sentences] for document in documents]
-    corpus = [' '.join(preprocessText(document.text)) for document in documents]
+    corpus = [' '.join(preprocessText(document.text,stemming=IS_STEM,stopwords_removal=REMOVE_STOPWORDS)) for document in documents]
 
     npchunkcorpus = []
     npdocumentcorpus = {}
@@ -415,10 +552,10 @@ def extract_vectors( documents,  ngram=(1,1), OUTPUT_FOL='UNIGRAMS'):
     if not os.path.exists(OUTPUT_DIR + OUTPUT_FOL):
         os.makedirs(OUTPUT_DIR + OUTPUT_FOL)
 
-    corpus = [' '.join(preprocessText(document.text)) for document in documents]
+    corpus = [' '.join(preprocessText(document.text,stemming=IS_STEM,stopwords_removal=REMOVE_STOPWORDS)) for document in documents]
 
 
-    tf = TfidfVectorizer(analyzer='word', ngram_range=ngram,stop_words=stopwords,min_df=3)
+    tf = TfidfVectorizer(analyzer='word', ngram_range=ngram,min_df=3)
     tfidf_matrix = tf.fit_transform(corpus)
 
     doc_id=0
@@ -445,7 +582,7 @@ def extract_unigrams( documents,  ngram=3, OUTPUT_FOL='UNIGRAMS'):
 
     for doc in documents:
         l_ngrams = []
-        tokens = preprocessText(doc.text)
+        tokens = preprocessText(doc.text,stemming=IS_STEM,stopwords_removal=REMOVE_STOPWORDS)
         for i in range(0,ngram):
             l_ngrams += nltk.ngrams(tokens,n=i+1)
 
@@ -545,7 +682,7 @@ def extract_high_tfidf_words( documents, top_k=200, ngram=(1,1), OUTPUT_FOL='TFI
     if not os.path.exists(OUTPUT_DIR + OUTPUT_FOL):
         os.makedirs(OUTPUT_DIR + OUTPUT_FOL)
 
-    texts = [' '.join(preprocessText(document.text,stemming=True,stopwords_removal=True))  for document in documents]
+    texts = [' '.join(preprocessText(document.text,stemming=IS_STEM,stopwords_removal=REMOVE_STOPWORDS))  for document in documents]
 
     #### Create Scikitlearn corpus
     top_k_list = {}
@@ -584,16 +721,14 @@ def extract_high_tfidf_words( documents, top_k=200, ngram=(1,1), OUTPUT_FOL='TFI
         f.write('\n')
         f.close()
 
-
-
 if __name__=='__main__':
 
     keyword_trie = None
     word_list = [ 'greedy-wiki']#,'gredy-acm']
 
-    listbooks = ['irv-','issr-','mir-','iir-','foa-','zhai-','iirbookpubs-','seirip-','chapterwiseiir-','wiki-','wikitest-']
+    listbooks = ['irv-','issr-','mir-','iir-','foa-','zhai-','iirbookpubs-','seirip-','chapterwiseiir-','wiki-','wikitest-','iirtest-']
     # listbooks = [ 'iir-',  'wikitest-']
-    listbooks_test = ['chapterwiseiir']
+    listbooks_test = ['chapterwiseiir-']
 
     documents = load_document(IR_CORPUS,listbooks)
     documentstest = load_document(IR_CORPUS,listbooks_test)
@@ -604,63 +739,71 @@ if __name__=='__main__':
     #
 
 
-    kl = None
-    kl = KeywordList('greedy-wiki')
-    keyword_trie = kl.trie
-    extract_author_keywords(keyword_trie, documents, 'greedy-wiki')
+    # kl = None
+    # kl = KeywordList('greedy-wiki')
+    # keyword_trie = kl.trie
+    # extract_author_keywords(keyword_trie, documents, 'greedy-wiki')
 
+    llistbooks = ['irv-', 'issr-', 'foa-', 'zhai-', 'seirip-', 'wiki-', 'sigir']
+    llistbooks_test = ['chapterwiseiir', 'wikitest-', 'mir-', 'iir-', 'iirbookpubs-','iirtest-']
 
+    # Code for Doc2Vec
+    ldocuments = load_document(IR_CORPUS, llistbooks)
+    ldocumentstest = load_document(IR_CORPUS, llistbooks_test)
+    model_name = 'Doc2Vec(stemming=False, stopwords_removal=True, pretrained=Google)'
+    d2v = Doc2VecExtractor(ldocuments, model_path='model/%s/doc2vec_ir.model' % model_name, pretrained_model = 'google')
+    d2v.extract_d2v(testset=ldocumentstest, OUTPUT_FOL="data/keyphrase_output/%s/" % model_name)
+
+    # Code for Word2Vec
+    # ldocuments = load_document(IR_CORPUS, llistbooks)
+    # ldocumentstest = load_document(IR_CORPUS, llistbooks_test)
+    # w2v = Word2VecExtractor(pretrained_model = 'google')
+    # w2v.extract(testset=ldocuments, OUTPUT_FOL="data/keyphrase_output/Word2Vec-Google/")
+    # w2v.extract(testset=ldocumentstest, OUTPUT_FOL="data/keyphrase_output/Word2Vec-Google/")
 
     ## Code For LDA
-    # llistbooks = ['irv-','issr-','foa-','zhai-','seirip-','wiki-']
-    # llistbooks_test = ['chapterwiseiir','wikitest-','mir-','iir-','iirbookpubs-']
-    #
-    # ldocuments = load_document(IR_CORPUS,llistbooks)
-    # ldocumentstest = load_document(IR_CORPUS,llistbooks_test)
-    # for i in range(200,300,50):
-    #     extract_lda(ldocuments, OUTPUT_FOL="tLDA"+str(i),topics_n=i,testset=ldocumentstest)
-    #
     # llistbooks = ['irv-', 'issr-', 'foa-', 'zhai-', 'seirip-', 'wiki-', 'sigir']
-    # llistbooks_test = ['chapterwiseiir', 'wikitest-', 'mir-', 'iir-', 'iirbookpubs-']
+    # llistbooks_test = ['chapterwiseiir', 'wikitest-', 'mir-', 'iir-', 'iirbookpubs-','iirtest-']
     #
     # ldocuments = load_document(IR_CORPUS, llistbooks)
     # ldocumentstest = load_document(IR_CORPUS, llistbooks_test)
-    # for i in range(200, 300, 50):
-    #     extract_lda(ldocuments, OUTPUT_FOL="tsLDA" + str(i), topics_n=i, testset=ldocumentstest)
-
+    # for i in range(200, 350, 50):
+    #     extract_lda(ldocuments, OUTPUT_FOL="LDA" + str(i), topics_n=i, testset=ldocumentstest)
+    #
     # # Code For NP Chunks
     # print("NP Chunks ")
     # extract_np_high_tfidf_words( documents, top_k=10, ngram=(1,3), OUTPUT_FOL='TFIDFNP10')
     # extract_np_high_tfidf_words(documents, top_k=30, ngram=(1, 3), OUTPUT_FOL='TFIDFNP30')
     #
     #
-    ## Code For extracting VSM
-    # print("VSM")
-    # extract_vectors(documents,  ngram=(1, 1), OUTPUT_FOL='UNIGRAM')
-    #
-    ## Code For Extract Unigrams
+    # # # Code For extracting VSM
+    # # print("VSM")
+    # # extract_vectors(documents,  ngram=(1, 1), OUTPUT_FOL='UNIGRAM')
+    # #
+    # # Code For Extract Unigrams
     # print("UNIGRAMS ")
-    # extract_unigrams(documents,  ngram=(1, 1), OUTPUT_FOL='UNIGRAMS')
+    # extract_unigrams(documents,  ngram=1, OUTPUT_FOL='UNIGRAMS')
     #
     # ## Code For Extract Unigrams
     # print("NGRAMS ")
     # extract_unigrams(documents,  ngram=3, OUTPUT_FOL='NGRAMS')
+    # #
     #
-
     # print("HIGH NP TFIDF WORDS")
     # for i in range(1,4):
     #     extract_np_high_tfidf_words( documents, top_k=5, ngram=(i,i), OUTPUT_FOL='TFIDFNP'+str(i))
-
+    #
     # print("HIGH TFIDF WORDS")
     # for i in range(1,4):
     #     extract_high_tfidf_words( documents, top_k=5, ngram=(i,i), OUTPUT_FOL='TFIDF'+str(i))
-
+    # extract_high_tfidf_words(documents, top_k=5, ngram=(1, 3), OUTPUT_FOL='TFIDF13')
     # print("Global NGRAMS")
     # getGlobalngrams(grams=(2,2),documents=documents,threshold=0.01)
-    # getGlobalngrams(grams=(3,3), documents=documents, threshold=0.01)
-
+    getGlobalngrams(grams=(3,3), documents=documents, threshold=0.01)
+    #
     # print("NGRAMS ")
-    # listbooks = ['mir-','iir-','iirbookpubs-','chapterwiseiir-','wikitest-']
+    # listbooks = ['mir-','iir-','iirbookpubs-','chapterwiseiir-','wikitest-','iirtest-']
     # documents = load_document(IR_CORPUS,listbooks)
     #
     # extract_unigrams(documents,  ngram=3, OUTPUT_FOL='13NGRAMS')
+
